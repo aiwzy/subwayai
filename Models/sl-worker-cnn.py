@@ -12,7 +12,7 @@ from torch.utils.data import random_split
 #数据加载
 class ImageDataset(Dataset):
     def __init__(self, root_dir, transform=None):
-        self.root_dir = root_dir
+        self.root_dir = "C:\Users\xiang\OneDrive\桌面\subwayai\pythonProject\subwAI-surfer\data"
         self.transform = transform
         self.npy_paths = []  # 存储.npy文件路径
         self.labels = []  # 存储对应标签
@@ -107,7 +107,7 @@ class TimeFocusedModel(nn.Module):
 
 #训练
 def train():
-    data_root = './train_data'  # 数据目录结构：train_data/标签/*.npy
+    data_root = "C:\Users\xiang\OneDrive\桌面\subwayai\pythonProject\subwAI-surfer\train data"  # 数据目录结构：train_data/标签/*.npy
     batch_size = 32
     num_epochs = 80
     lr = 0.0005
