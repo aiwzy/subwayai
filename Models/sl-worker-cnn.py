@@ -7,6 +7,7 @@ from PIL import Image
 import os
 import glob
 import matplotlib.pyplot as plt
+from torch.utils.data import random_split
 
 #数据加载
 class ImageDataset(Dataset):
@@ -30,18 +31,22 @@ class ImageDataset(Dataset):
         return len(self.npy_paths)
 
     def __getitem__(self, idx):
-        img_path = self.image_paths[idx]
-        image = Image.open(img_path)
+        npy_path = self.npy_paths[idx]
         depth_images = np.load(npy_path).astype(np.float32)
 
-        if depth_images.dtype == np.uint8:
-            depth_images = depth_images / 255.0
+        if depth_images.shape[0] != 3:
+            raise ValueError(f"Invalid npy file {npy_path}: expected 3 time steps, got {depth_images.shape[0]}")
 
+        if depth_images.dtype == np.uint8:
+            depth_images = depth_images / 255.0  # 归一化到 [0,1]
+
+        # 转换为 (3, H, W) 的 tensor
         image_tensor = torch.from_numpy(depth_images)
 
         if self.transform:
             image_tensor = self.transform(image_tensor)
 
+        label = self.labels[idx]  # 获取当前样本的标签
         return image_tensor, label
 
 #模型
@@ -88,7 +93,7 @@ class TimeFocusedModel(nn.Module):
         for t in range(3):
             img_t = x[:, t:t + 1, :, :]  # 提取单张图片 [B, 1, H, W]
             feat_t = self.img_encoder(img_t).flatten(1)  # 编码为256维特征 [B, 256]
-            time_features.append(feat_t)
+            time_features.append(feat_t * self.time_importance[t])
         time_features = torch.stack(time_features, dim=2)  # [B, 256, 3]（时间维度）
 
         time_feat = self.time_conv(time_features).squeeze(2)  # [B, 128]
@@ -115,8 +120,8 @@ def train():
     # 数据预处理
     transform = transforms.Compose([
         transforms.Normalize(  # 归一化
-            mean=[0.5,0.5,0.5],
-            std=[0.5,0.5,0.5]
+            mean=[0.5],
+            std=[0.5]
         )
     ])
 
