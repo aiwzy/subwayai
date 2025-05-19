@@ -41,8 +41,8 @@ class ScreenCapture:
 
         # 方向镜像映射
         self.mirror_mapping = {
-            'up': 'down',
-            'down': 'up',
+            'up': 'up',
+            'down': 'down',
             'left': 'right',
             'right': 'left',
             'auto': 'auto'
@@ -181,7 +181,7 @@ if __name__ == "__main__":
     # 创建实例
     sc = ScreenCapture(
         region=custom_region,
-        output_path=r"C:\Users\4h55\Pictures\ScreenCaptures"
+        output_path=r"C:\Users\xiang\OneDrive\桌面\subwayai\pythonProject\subwAI-surfer\data*"
     )
 
     # 启动程序（无窗口显示）
