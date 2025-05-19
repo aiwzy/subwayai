@@ -181,7 +181,7 @@ if __name__ == "__main__":
     # 创建实例
     sc = ScreenCapture(
         region=custom_region,
-        output_path=r"C:\Users\xiang\OneDrive\桌面\subwayai\pythonProject\subwAI-surfer\data*"
+        output_path=r"C:\Users\xiang\OneDrive\桌面\subwayai\pythonProject\subwAI-surfer\data"
     )
 
     # 启动程序（无窗口显示）
