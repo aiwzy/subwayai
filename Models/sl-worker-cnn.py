@@ -167,7 +167,7 @@ class TimeFocusedModel(nn.Module):
             nn.BatchNorm1d(512),
             nn.LeakyReLU(0.1, inplace=True),
 
-            nn.Linear(512,256)
+            nn.Linear(512,256),
             nn.BatchNorm1d(256),
             nn.LeakyReLU(0.1, inplace=True),
 
