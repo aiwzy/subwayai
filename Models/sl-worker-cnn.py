@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
@@ -10,7 +11,8 @@ import matplotlib.pyplot as plt
 from torch.utils.data import random_split
 import numpy as np
 
-#数据加载
+
+# 数据加载
 class ImageDataset(Dataset):
     def __init__(self, root_dir, transform=None):
         self.root_dir = r"C:\Users\xiang\OneDrive\桌面\subwayai\pythonProject\subwAI-surfer\data"
@@ -51,7 +53,20 @@ class ImageDataset(Dataset):
         return image_tensor, label
 
 
-#深度可分离卷积
+# 注意力机制
+class SEBlock(nn.Module):
+    def __init__(self, in_channels, se_ratio=0.25):
+        super(SEBlock, self).__init__()
+        mid_channels = int(in_channels * se_ratio)
+        self.squeeze = nn.AdaptiveAvgPool2d(1)
+        self.excitation = nn.Sequential(
+            nn.Conv2d(in_channels, mid_channels, 1, bias=False),
+            nn.Hardswish(),
+            nn.Conv2d(mid_channels, in_channels, 1, bias=False),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):# 深度可分离卷积
 class DepthwiseSeparableConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, bias=True):
         super(DepthwiseSeparableConv2d, self).__init__()
@@ -69,7 +84,7 @@ class DepthwiseSeparableConv2d(nn.Module):
         )
 
         self.bn_depth = nn.BatchNorm2d(in_channels)
-        self.activation = nn.LeakyReLU(0.1, inplace=True)
+        self.activation = nn.SiLU()
 
         # 逐点卷积
         self.pointwise = nn.Conv2d(
@@ -105,30 +120,29 @@ class TimeFocusedModel(nn.Module):
 
         # 空间卷积
         self.spatial_encoder = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=3, padding=1),
+            nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(32),
-            nn.LeakyReLU(0.1, inplace=True),
-            nn.MaxPool2d(2, 2),
+            nn.SiLU(),
 
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(64),
-            nn.LeakyReLU(0.1, inplace=True),
-            nn.MaxPool2d(2, 2),
+            nn.SiLU(),
 
-            ResidualBlock(64,64),
+            ResidualBlock(64, 64),
 
             DepthwiseSeparableConv2d(64, 128, kernel_size=3, stride=2, padding=1),
 
             ResidualBlock(128, 128),
+            ResidualBlock(128, 128),
 
-            DepthwiseSeparableConv2d(128, 256, kernel_size=3),
-            nn.MaxPool2d(2, 2),
+            DepthwiseSeparableConv2d(128, 256, kernel_size=3, stride=2),
 
+            ResidualBlock(256, 256),
             ResidualBlock(256, 256),
 
             nn.Conv2d(256, 640, kernel_size=1),
             nn.BatchNorm2d(640),
-            nn.LeakyReLU(0.1, inplace=True),
+            nn.SiLU(),
 
             nn.AdaptiveAvgPool2d((1, 1))
         )
@@ -137,18 +151,16 @@ class TimeFocusedModel(nn.Module):
         self.time_raw_encoder = nn.Sequential(
             nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(32),
-            nn.LeakyReLU(0.1, inplace=True),
-            nn.MaxPool2d(2, 2),
+            nn.SiLU(),
 
             nn.Conv2d(32, 32, kernel_size=1),
             nn.BatchNorm2d(32),
-            nn.LeakyReLU(0.1, inplace=True),
-            nn.MaxPool2d(2, 2),
+            nn.SiLU(),
+            nn.MaxPool2d(2)
 
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(64),
-            nn.LeakyReLU(0.1, inplace=True),
-            nn.MaxPool2d(2, 2),
+            nn.SiLU(),
 
             nn.AdaptiveAvgPool2d((1, 1))
         )
@@ -157,7 +169,7 @@ class TimeFocusedModel(nn.Module):
         self.time_conv = nn.Sequential(
             nn.Conv1d(in_channels=64, out_channels=128, kernel_size=3, padding=1),
             nn.BatchNorm1d(128),
-            nn.LeakyReLU(0.1, inplace=True),
+            nn.SiLU(),
             nn.AdaptiveAvgPool1d(1)
         )
 
@@ -165,11 +177,11 @@ class TimeFocusedModel(nn.Module):
         self.classifier = nn.Sequential(
             nn.Linear(640 + 128, 512),
             nn.BatchNorm1d(512),
-            nn.LeakyReLU(0.1, inplace=True),
+            nn.SiLU(),
 
-            nn.Linear(512,256),
+            nn.Linear(512, 256),
             nn.BatchNorm1d(256),
-            nn.LeakyReLU(0.1, inplace=True),
+            nn.SiLU(),
 
             nn.Linear(256, num_classes),
         )
@@ -198,7 +210,7 @@ class TimeFocusedModel(nn.Module):
 
 # 残差块
 class ResidualBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, reduction=4):
+    def __init__(self, in_channels, out_channels, reduction=2):
         super().__init__()
         bottleneck_channels = out_channels // reduction
 
@@ -208,7 +220,7 @@ class ResidualBlock(nn.Module):
         self.bn2 = nn.BatchNorm2d(bottleneck_channels)
         self.conv3 = nn.Conv2d(bottleneck_channels, out_channels, kernel_size=1)
         self.bn3 = nn.BatchNorm2d(out_channels)
-        self.relu = nn.LeakyReLU(0.1, inplace=True)
+        self.relu = nn.SiLU
 
         self.shortcut = nn.Sequential()
         if in_channels != out_channels:
@@ -218,15 +230,15 @@ class ResidualBlock(nn.Module):
             )
 
     def forward(self, x):
-        out = self.relu(self.bn1(self.conv1(x)))
-        out = self.relu(self.bn2(self.conv2(out)))
+        out = self.SiLU(self.bn1(self.conv1(x)))
+        out = self.SiLU(self.bn2(self.conv2(out)))
         out = self.bn3(self.conv3(out))
         out += self.shortcut(x)
-        out = self.relu(out)
+        out = self.SiLU(out)
         return out
 
 
-#训练
+# 训练
 def train():
     data_root = r"C:\Users\xiang\OneDrive\桌面\subwayai\pythonProject\subwAI-surfer\data"  # 数据目录结构：train_data/标签/*.npy
     batch_size = 16
@@ -235,12 +247,14 @@ def train():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     plt.ion()
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.set_title('Training & Validation Loss')
+    ax.set_xlabel('Epoch')
+    ax.set_ylabel('Loss')
 
-    # 数据预处理
+    # 归一化
     transform = transforms.Compose([
-        transforms.Normalize(  # 归一化
+        transforms.Normalize(
             mean=[0.5],
             std=[0.5]
         )
@@ -256,23 +270,27 @@ def train():
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
 
+    unique_labels = dataset.labels.unique()
+    num_classes = unique_labels.size(0)
+
     # 初始化模型
-    model = TimeFocusedModel(num_classes=len(set(dataset.labels))).to(device)
+    model = TimeFocusedModel(num_classes=5).to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
-    scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
-        optimizer,
-        T_0=5,
-        T_mult=2,
-        eta_min=0.00001
+    optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='min', factor=0.5, patience=3
     )
 
     epoch_losses = []
     epoch_val_losses = []
+    epoch_accs = []
+    epoch_val_accs = []
 
     best_val_loss = float('inf')
-    patience = 7
+    best_val_acc = -float('inf')
+    patience = 6
     no_improve_epochs = 0
+    no_improve_acc_epochs = 0
     best_model_weights = None
 
     for epoch in range(num_epochs):
@@ -287,7 +305,7 @@ def train():
 
             # 验证输入形状
             if batch_idx == 0 and epoch == 0:
-                print(f"输入形状: {images.shape}（[batch, time_steps, H, W]）") # 应输出[32, 3, 128, 128]
+                print(f"输入形状: {images.shape}（[batch, time_steps, H, W]）")  # 应输出[32, 3, 128, 128]
 
             outputs = model(images)
             loss = criterion(outputs, labels)
@@ -307,7 +325,7 @@ def train():
 
         epoch_loss = running_loss / len(train_loader)
         epoch_acc = 100 * correct / total
-        scheduler.step()
+        epoch_accs.append(epoch_acc)
         epoch_losses.append(epoch_loss)
 
         print(f'\nEpoch [{epoch + 1}/{num_epochs}] Complete: '
@@ -328,43 +346,53 @@ def train():
 
         epoch_val_loss = val_loss_total / len(val_loader)
         epoch_val_losses.append(epoch_val_loss)
+        scheduler.step(epoch_val_loss)
 
         val_acc = 100 * val_correct / len(val_dataset)
+        epoch_val_accs.append(val_acc)
         print(f'Validation Acc: {val_acc:.2f}%, Val Loss: {epoch_val_loss:.4f}')
 
         # 早停机制
-        if epoch_val_loss < best_val_loss:
-            print(f'Validation loss improved from {best_val_loss:.4f} to {epoch_val_loss:.4f}')
-            best_val_loss = epoch_val_loss
-            best_model_weights = model.state_dict().copy()
-            no_improve_epochs = 0
-            torch.save(best_model_weights, r"C:\Users\xiang\OneDrive\桌面\subwayai\pythonProject\subwAI-surfer\weights\DepthwiseSeparable-model.pth")
-        else:
-            no_improve_epochs += 1
+        # if epoch_val_loss < best_val_loss:
+        #     best_val_loss = epoch_val_loss
+        #     no_improve_epochs = 0
+        # else:
+        #     no_improve_epochs += 1
 
-        if no_improve_epochs >= patience:
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
+            best_model_weights = model.state_dict().copy()
+            no_improve_acc_epochs = 0
+        else:
+            no_improve_acc_epochs += 1
+
+        if no_improve_epochs >= patience or no_improve_acc_epochs >= patience:
             print(f'\nEarly stopping triggered at epoch {epoch + 1}!')
             model.load_state_dict(best_model_weights)
-            torch.save(best_model_weights, 'models/best_3d_model.pth')
+            torch.save(best_model_weights,
+                       r"C:\Users\xiang\OneDrive\桌面\subwayai\pythonProject\subwAI-surfer\weights\CurrentBestModel.pth")
             break
 
-        print(f'Best validation loss: {best_val_loss:.4f}')
+        print(f'Best validation accuracy: {best_val_acc:.2f}')
 
         # 绘制损失曲线
+        x = list(range(1, epoch + 2))
         ax.clear()
-        ax.plot(range(1, epoch + 2), epoch_losses, 'b-', label='Train Loss')
-        ax.plot(range(1, epoch + 2), epoch_val_losses, 'r-', label='Val Loss')
+        ax.plot(x, epoch_losses, 'b-', label='Train Loss')
+        ax.plot(x, epoch_val_losses, 'r-', label='Val Loss')
+        ax.set_title('Training & Validation Loss')
         ax.set_xlabel('Epoch')
         ax.set_ylabel('Loss')
         ax.legend()
-        plt.draw()
-        plt.pause(0.1)
+        fig.canvas.draw()
+        fig.canvas.flush_events()
+        plt.pause(0.001)
 
     plt.ioff()
     plt.show()
 
-    print('3D CNN训练完成！')
+    print('训练完成！')
+
 
 if __name__ == '__main__':
     train()
-    
