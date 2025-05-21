@@ -110,14 +110,12 @@ class TimeFocusedModel(nn.Module):
             nn.LeakyReLU(0.1, inplace=True),
             nn.MaxPool2d(2, 2),
 
-            ResidualBlock(32, 32),
-
             nn.Conv2d(32, 64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64),
             nn.LeakyReLU(0.1, inplace=True),
             nn.MaxPool2d(2, 2),
 
-            ResidualBlock(64, 64),
+            ResidualBlock(64,64),
 
             DepthwiseSeparableConv2d(64, 128, kernel_size=3, stride=2, padding=1),
 
@@ -168,7 +166,12 @@ class TimeFocusedModel(nn.Module):
             nn.Linear(640 + 128, 512),
             nn.BatchNorm1d(512),
             nn.LeakyReLU(0.1, inplace=True),
-            nn.Linear(512, num_classes),
+
+            nn.Linear(512,256)
+            nn.BatchNorm1d(256),
+            nn.LeakyReLU(0.1, inplace=True),
+
+            nn.Linear(256, num_classes),
         )
 
     def forward(self, x):
@@ -195,7 +198,7 @@ class TimeFocusedModel(nn.Module):
 
 # 残差块
 class ResidualBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, reduction=2):
+    def __init__(self, in_channels, out_channels, reduction=4):
         super().__init__()
         bottleneck_channels = out_channels // reduction
 
