@@ -133,11 +133,9 @@ class TimeFocusedModel(nn.Module):
             DepthwiseSeparableConv2d(64, 128, kernel_size=3, stride=2, padding=1),
 
             ResidualBlock(128, 128),
-            ResidualBlock(128, 128),
 
             DepthwiseSeparableConv2d(128, 256, kernel_size=3, stride=2),
 
-            ResidualBlock(256, 256),
             ResidualBlock(256, 256),
 
             nn.Conv2d(256, 640, kernel_size=1),
@@ -178,10 +176,12 @@ class TimeFocusedModel(nn.Module):
             nn.Linear(640 + 128, 512),
             nn.BatchNorm1d(512),
             nn.SiLU(),
+            nn.Dropout(p=0.1)
 
             nn.Linear(512, 256),
             nn.BatchNorm1d(256),
             nn.SiLU(),
+            nn.Dropout(p=0.1)
 
             nn.Linear(256, num_classes),
         )
